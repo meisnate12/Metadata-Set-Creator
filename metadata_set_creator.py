@@ -45,6 +45,22 @@ if not os.path.exists(pmmargs["pmm-config"]):
     raise Failed(f"PMM Config Not Found at: {pmmargs['pmm-config']}")
 config = YAML(path=pmmargs["pmm-config"])
 
+if "tmdb" not in config:
+    raise Failed("tmdb attribute not in config")
+elif not config["tmdb"]:
+    raise Failed("tmdb attribute blank")
+elif "apikey" not in config["tmdb"]:
+    raise Failed("apikey attribute not in tmdb")
+elif not config["tmdb"]["apikey"]:
+    raise Failed("apikey attribute blank")
+tmdbapi = None
+try:
+    tmdbapi = TMDbAPIs(config["tmdb"]["apikey"])
+    logger.info("TMDb Connection Successful")
+except TMDbException as e:
+    logger.error("TMDb Connection Failed")
+    raise Failed(e)
+
 movies = {}
 shows = {}
 if not pmmargs["url"]:
@@ -121,17 +137,6 @@ elif pmmargs["url"].startswith("https://trakt.tv/"):
         else:
             if _id not in shows:
                 shows[_id] = {"title": data["title"], "year": data["year"]}
-            if _type in ["episode", "season"]:
-                if "seasons" not in shows[_id]:
-                    shows[_id]["seasons"] = {}
-                atr = "number" if _type == "season" else "season"
-                if int(item[_type][atr]) not in shows[_id]["seasons"]:
-                    shows[_id]["seasons"][int(item[_type][atr])] = {}
-                if _type == "episode":
-                    if "episodes" not in shows[_id]["seasons"][int(item[_type][atr])]:
-                        shows[_id]["seasons"][int(item[_type][atr])]["episodes"] = {}
-                    if int(item[_type]["number"]) not in shows[_id]["seasons"][int(item[_type][atr])]["episodes"]:
-                        shows[_id]["seasons"][int(item[_type][atr])]["episodes"][int(item[_type]["number"])] = {}
 elif pmmargs["url"].startswith("https://mdblist.com/lists/"):
     params = {}
     parsed_url = urlparse(pmmargs["url"])
@@ -179,39 +184,49 @@ elif pmmargs["url"].startswith("https://www.themoviedb.org/list/"):
 else:
     raise Failed(f"URL Invalid: {pmmargs['url']}")
 
-
-def L(**li):
-    ret = ruamel.yaml.comments.CommentedMap(**li)
-    ret.fa.set_flow_style()
-    return ret
-
 if movies:
-    yaml_out = YAML("movie_list.yml", start_empty=True)
     metadata = {}
-    for k, v in movies.items():
-        metadata[f"{v['title']} ({v['year']})"] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
-    yaml_out["metadata"] = metadata
-    yaml_out.save()
-    yaml_out = YAML("movie_set.yml", start_empty=True)
     set_data = {}
     for k, v in movies.items():
-        set_data[f"{v['title']} ({v['year']})"] = YAML.inline({"poster_tpdb": None})
+        title = f"{v['title']} ({v['year']})"
+        metadata[title] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
+        set_data[title] = YAML.inline({"poster_tpdb": None})
+
+    yaml_out = YAML(os.path.join(config_dir, "movie_list.yml"), start_empty=True)
+    yaml_out["metadata"] = metadata
+    yaml_out.save()
+
+    yaml_out = YAML(os.path.join(config_dir, "movie_set.yml"), start_empty=True)
     yaml_out["set"] = set_data
     yaml_out.save()
 
 if shows:
-    yaml_out = YAML("show_list.yml", start_empty=True)
     metadata = {}
+    set_data = {}
     for k, v in shows.items():
-        data = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
-        if "seasons" in v:
-            data["seasons"] = {}
-            for s in v["seasons"]:
-                data["seasons"][s] = {}
-                if "episodes" in v["seasons"][s]:
-                    data["seasons"][s]["episodes"] = {}
-                    for e in v["seasons"][s]["episodes"]:
-                        data["seasons"][s]["episodes"][e] = {}
-        metadata[f"{v['title']} ({v['year']})"] = data
+        title = f"{v['title']} ({v['year']})"
+        metadata[title] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
+        show = {"poster_tpdb": None}
+        if isinstance(k, int):
+            try:
+                results = tmdbapi.find_by_id(tvdb_id=str(k))
+                if not results.tv_results:
+                    raise TMDbException(f"No Results were found for tvdb_id: {k}")
+                tmdb_show = results.tv_results[0]
+                for season in tmdb_show.seasons:
+                    if "seasons" not in show:
+                        show["seasons"] = {}
+                    show["seasons"][season.season_number] = {"poster_tpdb": None, "episodes": {}}
+                    for episode in season.episodes:
+                        show["seasons"][season.season_number]["episodes"][episode.episode_number] = YAML.inline({"poster_tpdb": None})
+            except TMDbException as e:
+                logger.error(f"TMDb Error: {e}")
+        set_data[title] = YAML.inline(show) if len(show) == 1 else show
+
+    yaml_out = YAML(os.path.join(config_dir, "show_list.yml"), start_empty=True)
     yaml_out["metadata"] = metadata
+    yaml_out.save()
+
+    yaml_out = YAML(os.path.join(config_dir, "show_set.yml"), start_empty=True)
+    yaml_out["set"] = set_data
     yaml_out.save()
