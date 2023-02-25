@@ -1,4 +1,4 @@
-name: Docker Version Release
+name: Version Release
 
 on:
   create:
