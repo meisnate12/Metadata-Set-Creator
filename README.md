@@ -56,19 +56,23 @@ Each option can be applied in three ways:
 2. Setting the Environment Variable.
 3. Adding the Environment Variables to `config/.env` 
 
-| Option       | Description                                                                                                                                                                                                                                             | Required |
-|:-------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------:|
-| List URL     | Trakt or MDbList List URL. <br>**Shell Command:** `-u` or `--url "https://trakt.tv/users/movistapp/lists/christmas-movies"` <br>**Environment Variable:** `URL=https://trakt.tv/users/movistapp/lists/christmas-movies`                                 | &#9989;  |
-| PMM Config   | Path to PMM Config with TMDb/Trakt configured. **Default:** `config/config.yml`<br>**Shell Command:** `-pm` or `--pmm-config "C:\Plex Meta Manager\config\config.yml"`<br>**Environment Variable:** `PMM_CONFIG=C:\Plex Meta Manager\config\config.yml` | &#10060; |
-| Timeout      | Timeout can be any number greater then 0. **Default:** `600`<br>**Shell Command:** `-ti` or `--timeout 1000`<br>**Environment Variable:** `TIMEOUT=1000`                                                                                                | &#10060; |
-| Trace Logs   | Run with extra trace logs.<br>**Shell Command:** `-tr` or `--trace`<br>**Environment Variable:** `TRACE=True`                                                                                                                                           | &#10060; |
-| Log Requests | Run with every request logged.<br>**Shell Command:** `-lr` or `--log-requests`<br>**Environment Variable:** `LOG_REQUESTS=True`                                                                                                                         | &#10060; |
+| Option               | Description                                                                                                                                                                                                                                             | Required |
+|:---------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------:|
+| List URL             | Trakt or MDbList List URL. <br>**Shell Command:** `-u` or `--url "https://trakt.tv/users/movistapp/lists/christmas-movies"` <br>**Environment Variable:** `URL=https://trakt.tv/users/movistapp/lists/christmas-movies`                                 | &#9989;  |
+| PMM Config           | Path to PMM Config with TMDb/Trakt configured. **Default:** `config/config.yml`<br>**Shell Command:** `-pm` or `--pmm-config "C:\Plex Meta Manager\config\config.yml"`<br>**Environment Variable:** `PMM_CONFIG=C:\Plex Meta Manager\config\config.yml` | &#10060; |
+| Timeout              | Timeout can be any number greater then 0. **Default:** `600`<br>**Shell Command:** `-ti` or `--timeout 1000`<br>**Environment Variable:** `TIMEOUT=1000`                                                                                                | &#10060; |
+| Season Placeholders  | Add Season posters placeholders.<br>**Shell Command:** `-s` or `--season`<br>**Environment Variable:** `SEASON=True`                                                                                                                                    | &#10060; |
+| Episode Placeholders | Add Episode posters placeholders.<br>**Shell Command:** `-e` or `--episode`<br>**Environment Variable:** `EPISODE=True`                                                                                                                                 | &#10060; |
+| Trace Logs           | Run with extra trace logs.<br>**Shell Command:** `-tr` or `--trace`<br>**Environment Variable:** `TRACE=True`                                                                                                                                           | &#10060; |
+| Log Requests         | Run with every request logged.<br>**Shell Command:** `-lr` or `--log-requests`<br>**Environment Variable:** `LOG_REQUESTS=True`                                                                                                                         | &#10060; |
 
 ### Example .env File
 ```
 URL=https://trakt.tv/users/movistapp/lists/christmas-movies
 PMM_CONFIG=C:\Plex Meta Manager\config\config.yml
 TIMEOUT=600
+SEASON=True
+Episode=True
 TRACE=False
 LOG_REQUESTS=False
 ```

@@ -24,6 +24,8 @@ options = [
     {"arg": "pc", "key": "pmm-config",   "env": "PMM_CONFIG",   "type": "str",  "default": None,  "help": "PMM Config File"},
     {"arg": "u",  "key": "url",          "env": "URL",          "type": "str",  "default": None,  "help": "Trakt, MDbList, IMDb, or TMDb List URL"},
     {"arg": "ti", "key": "timeout",      "env": "TIMEOUT",      "type": "int",  "default": 600,   "help": "Timeout can be any number greater then 0. (Default: 600)"},
+    {"arg": "s",  "key": "season",       "env": "SEASON",       "type": "bool", "default": False, "help": "Add Season posters placeholders."},
+    {"arg": "e",  "key": "episode",      "env": "EPISODE",      "type": "bool", "default": False, "help": "Add Episode posters placeholders."},
     {"arg": "tr", "key": "trace",        "env": "TRACE",        "type": "bool", "default": False, "help": "Run with extra trace logs."},
     {"arg": "lr", "key": "log-requests", "env": "LOG_REQUESTS", "type": "bool", "default": False, "help": "Run with every request logged."}
 ]
@@ -207,7 +209,7 @@ if shows:
         title = f"{v['title']} ({v['year']})"
         metadata[title] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
         show = {"poster_tpdb": None}
-        if isinstance(k, int):
+        if isinstance(k, int) and (pmmargs["season"] or pmmargs["episode"]):
             try:
                 results = tmdbapi.find_by_id(tvdb_id=str(k))
                 if not results.tv_results:
@@ -216,9 +218,12 @@ if shows:
                 for season in tmdb_show.seasons:
                     if "seasons" not in show:
                         show["seasons"] = {}
-                    show["seasons"][season.season_number] = {"poster_tpdb": None, "episodes": {}}
-                    for episode in season.episodes:
-                        show["seasons"][season.season_number]["episodes"][episode.episode_number] = YAML.inline({"poster_tpdb": None})
+                    if pmmargs["episode"]:
+                        show["seasons"][season.season_number] = {"poster_tpdb": None, "episodes": {}} if pmmargs["season"] else {"episodes": {}}
+                        for episode in season.episodes:
+                            show["seasons"][season.season_number]["episodes"][episode.episode_number] = YAML.inline({"poster_tpdb": None})
+                    else:
+                        show["seasons"][season.season_number] = YAML.inline({"poster_tpdb": None})
             except TMDbException as e:
                 logger.error(f"TMDb Error: {e}")
         set_data[title] = YAML.inline(show) if len(show) == 1 else show
