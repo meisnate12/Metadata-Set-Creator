@@ -1,0 +1,20 @@
+name: Docker Version Release
+
+on:
+  create:
+    tags:
+      - v*
+
+jobs:
+
+  docker-version:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Create release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          title: ${{ secrets.NAME }} ${{ github.event.ref }}
+          repo_token: ${{ secrets.PAT }}
+          prerelease: false
