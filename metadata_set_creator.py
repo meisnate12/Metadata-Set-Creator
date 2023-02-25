@@ -1,4 +1,4 @@
-import os, sys, ruamel.yaml
+import os, sys, re
 from json import JSONDecodeError
 from urllib.parse import urlparse, parse_qs
  # https://www.themoviedb.org/list/10
@@ -11,7 +11,7 @@ try:
     from pmmutils.args import PMMArgs
     from pmmutils.exceptions import Failed
     from pmmutils.yaml import YAML
-    from tmdbapis import TMDbAPIs, TMDbException
+    from tmdbapis import TMDbAPIs, TMDbException, Movie, TVShow
 except (ModuleNotFoundError, ImportError):
     print("Requirements Error: Requirements are not installed")
     sys.exit(0)
@@ -159,7 +159,6 @@ elif pmmargs["url"].startswith("https://mdblist.com/lists/"):
             raise Failed(f"Mdblist Error: Invalid Response {response}")
     except JSONDecodeError:
         raise Failed(f"Mdblist Error: Invalid Response")
-    results = []
     for data in response:
         if data["mediatype"] == "movie":
             if data["id"] not in movies:
@@ -168,20 +167,21 @@ elif pmmargs["url"].startswith("https://mdblist.com/lists/"):
             if data["tvdbid"] not in shows:
                 shows[data["tvdbid"]] = {"title": data["title"], "year": data["release_year"]}
 elif pmmargs["url"].startswith("https://www.themoviedb.org/list/"):
-    if "tmdb" not in config:
-        raise Failed("tmdb attribute not in config")
-    elif not config["tmdb"]:
-        raise Failed("tmdb attribute blank")
-    elif "apikey" not in config["tmdb"]:
-        raise Failed("apikey attribute not in tmdb")
-    elif not config["tmdb"]["apikey"]:
-        raise Failed("apikey attribute blank")
-    tmdbapi = None
+    if match := re.search("(\\d+)", str(pmmargs["url"])):
+        tmdb_id = int(match.group(1))
+    else:
+        raise Failed(f"Regex Error: Failed to parse TMDb List ID from {pmmargs['url']}")
     try:
-        tmdbapi = TMDbAPIs(config["tmdb"]["apikey"])
-        logger.info("TMDb Connection Successful")
+        results = tmdbapi.list(tmdb_id)
+        for i in results.get_results(results.total_results):
+            if isinstance(i, Movie):
+                if i.id not in movies:
+                    movies[i.id] = {"title": i.name, "year": i.release_date.year}
+            elif isinstance(i, TVShow):
+                if i.tvdb_id not in shows:
+                    shows[i.tvdb_id] = {"title": i.name, "year": i.first_air_date.year}
     except TMDbException as e:
-        raise Failed(e)
+        raise Failed(f"TMDb Error: No List found for TMDb ID {tmdb_id}: {e}")
 #elif pmmargs["url"].startswith("https://www.imdb.com/"):
 else:
     raise Failed(f"URL Invalid: {pmmargs['url']}")
