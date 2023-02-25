@@ -29,11 +29,11 @@ options = [
     {"arg": "tr", "key": "trace",        "env": "TRACE",        "type": "bool", "default": False, "help": "Run with extra trace logs."},
     {"arg": "lr", "key": "log-requests", "env": "LOG_REQUESTS", "type": "bool", "default": False, "help": "Run with every request logged."}
 ]
-script_name = "PMM Metadata Set Creator"
+script_name = "Metadata Set Creator"
 base_dir = os.path.dirname(os.path.abspath(__file__))
 config_dir = os.path.join(base_dir, "config")
 
-pmmargs = PMMArgs("meisnate12/PMM-Metadata-Set-Creator", base_dir, options, use_nightly=False)
+pmmargs = PMMArgs("meisnate12/Metadata-Set-Creator", base_dir, options, use_nightly=False)
 logger = logging.PMMLogger(script_name, "set_creator", os.path.join(config_dir, "logs"), is_trace=pmmargs["trace"], log_requests=pmmargs["log-requests"])
 #logger.secret([pmmargs["tmdbapi"]])
 requests.Session.send = util.update_send(requests.Session.send, pmmargs["timeout"])

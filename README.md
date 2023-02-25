@@ -1,6 +1,6 @@
-# Plex Meta Manager Metadata Set Creator
+# Metadata Set Creator
 
-Plex Meta Manager Metadata Set Creator is an open source Python 3 project that has been created to create a metadata file and associated set file for a list.
+Metadata Set Creator is an open source Python 3 project that has been created to create a Plex Meta Manager metadata file and associated set file for a list.
 
 ## Installing PMM Metadata Set Creator
 
@@ -28,7 +28,7 @@ These are high-level steps which assume the user has knowledge of python and pip
 1. Clone or [download and unzip](https://github.com/meisnate12/PMM-Metadata-Set-Creator/archive/refs/heads/master.zip) the repo.
 
 ```shell
-git clone https://github.com/meisnate12/PMM-Metadata-Set-Creator
+git clone https://github.com/meisnate12/Metadata-Set-Creator
 ```
 2. Install dependencies:
 
