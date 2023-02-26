@@ -1,6 +1,9 @@
-import os, sys, re
+import math, os, re, sys, time
 from json import JSONDecodeError
 from urllib.parse import urlparse, parse_qs
+from lxml import html
+from tqdm import tqdm
+
  # https://www.themoviedb.org/list/10
  # https://trakt.tv/users/movistapp/lists/christmas-movies
  # https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week
@@ -29,6 +32,7 @@ options = [
     {"arg": "tr", "key": "trace",        "env": "TRACE",        "type": "bool", "default": False, "help": "Run with extra trace logs."},
     {"arg": "lr", "key": "log-requests", "env": "LOG_REQUESTS", "type": "bool", "default": False, "help": "Run with every request logged."}
 ]
+headers = {"Accept-Language": "en-US,en;q=0.5", "User-Agent": "Mozilla/5.0 Firefox/102.0"}
 script_name = "Metadata Set Creator"
 base_dir = os.path.dirname(os.path.abspath(__file__))
 config_dir = os.path.join(base_dir, "config")
@@ -166,23 +170,102 @@ elif pmmargs["url"].startswith("https://mdblist.com/lists/"):
         elif data["mediatype"] == "show":
             if data["tvdbid"] not in shows:
                 shows[data["tvdbid"]] = {"title": data["title"], "year": data["release_year"]}
-elif pmmargs["url"].startswith("https://www.themoviedb.org/list/"):
+elif pmmargs["url"].startswith("https://www.themoviedb.org/"):
     if match := re.search("(\\d+)", str(pmmargs["url"])):
         tmdb_id = int(match.group(1))
     else:
-        raise Failed(f"Regex Error: Failed to parse TMDb List ID from {pmmargs['url']}")
+        raise Failed(f"Regex Error: Failed to parse TMDb ID from {pmmargs['url']}")
     try:
-        results = tmdbapi.list(tmdb_id)
-        for i in results.get_results(results.total_results):
+        if pmmargs["url"].startswith(("https://www.themoviedb.org/collection/", "https://www.themoviedb.org/movie/")):
+            items = tmdbapi.collection(tmdb_id).movies
+        elif pmmargs["url"].startswith("https://www.themoviedb.org/list/"):
+            results = tmdbapi.list(tmdb_id)
+            items = results.get_results(results.total_results)
+        else:
+            raise Failed(f"TMDb Error: Failed to parse URL: {pmmargs['url']}")
+        for i in items:
             if isinstance(i, Movie):
                 if i.id not in movies:
-                    movies[i.id] = {"title": i.name, "year": i.release_date.year}
+                    movies[i.id] = {"title": i.name, "year": i.release_date.year if i.release_date else ""}
             elif isinstance(i, TVShow):
                 if i.tvdb_id not in shows:
-                    shows[i.tvdb_id] = {"title": i.name, "year": i.first_air_date.year}
+                    shows[i.tvdb_id] = {"title": i.name, "year": i.first_air_date.year if i.first_air_date else ""}
     except TMDbException as e:
-        raise Failed(f"TMDb Error: No List found for TMDb ID {tmdb_id}: {e}")
-#elif pmmargs["url"].startswith("https://www.imdb.com/"):
+        raise Failed(f"TMDb Error: No Collection found for TMDb ID {tmdb_id}: {e}")
+elif pmmargs["url"].startswith("https://www.imdb.com/"):
+    is_search = False
+    is_title_text = False
+    if pmmargs["url"].startswith("https://www.imdb.com/list/ls"):
+        xpath_total = "//div[@class='desc lister-total-num-results']/text()"
+
+        item_count = 100
+    elif pmmargs["url"].startswith("https://www.imdb.com/search/title/"):
+        xpath_total = "//div[@class='desc']/span/text()"
+        is_search = True
+        item_count = 250
+    elif pmmargs["url"].startswith("https://www.imdb.com/search/title-text/"):
+        xpath_total = "//div[@class='desc']/span/text()"
+        is_title_text = True
+        item_count = 50
+    else:
+        xpath_total = "//div[@class='desc']/text()"
+        item_count = 50
+    results = html.fromstring(requests.get(pmmargs["url"], headers=headers).content).xpath(xpath_total)
+    total = 0
+    for result in results:
+        if "title" in result:
+            try:
+                total = int(re.findall("(\\d+) title", result.replace(",", ""))[0])
+                break
+            except IndexError:
+                pass
+    if total < 1:
+        raise Failed(f"IMDb Error: Failed to parse URL: {pmmargs['url']}")
+
+    imdb_ids = []
+    parsed_url = urlparse(pmmargs["url"])
+    params = parse_qs(parsed_url.query)
+    imdb_base = parsed_url._replace(query=None).geturl() # noqa
+    params.pop("start", None) # noqa
+    params.pop("count", None) # noqa
+    params.pop("page", None) # noqa
+    remainder = total % item_count
+    if remainder == 0:
+        remainder = item_count
+    num_of_pages = math.ceil(int(total) / item_count)
+    for i in tqdm(range(1, num_of_pages + 1), unit=" parsed", desc="| Parsing IMDb Page "):
+        start_num = (i - 1) * item_count + 1
+        if is_search:
+            params["count"] = remainder if i == num_of_pages else item_count # noqa
+            params["start"] = start_num # noqa
+        elif is_title_text:
+            params["start"] = start_num # noqa
+        else:
+            params["page"] = i # noqa
+        response = html.fromstring(requests.get(pmmargs["url"], headers=headers, params=params).content)
+        ids_found = response.xpath("//div[contains(@class, 'lister-item-image')]//a/img//@data-tconst")
+        if not is_search and i == num_of_pages:
+            ids_found = ids_found[:remainder]
+        imdb_ids.extend(ids_found)
+        time.sleep(2)
+    if not imdb_ids:
+        raise Failed(f"IMDb Error: No IMDb IDs Found at {pmmargs['url']}")
+    for imdb_id in imdb_ids:
+        try:
+            results = tmdbapi.find_by_id(imdb_id=imdb_id)
+            if results.movie_results:
+                i = results.movie_results[0]
+                if i.id not in movies:
+                    movies[i.id] = {"title": i.name, "year": i.release_date.year if i.release_date else ""}
+            elif results.tv_results:
+                i = results.tv_results[0]
+                if i.tvdb_id not in shows:
+                    shows[i.tvdb_id] = {"title": i.name, "year": i.first_air_date.year if i.first_air_date else ""}
+            else:
+                logger.error(f"TMDb Error: No TMDb ID found for IMDb ID {imdb_id}")
+        except TMDbException:
+            logger.error(f"TMDb Error: No TMDb ID found for IMDb ID {imdb_id}")
+
 else:
     raise Failed(f"URL Invalid: {pmmargs['url']}")
 
