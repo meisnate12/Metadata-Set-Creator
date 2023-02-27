@@ -4,10 +4,6 @@ from urllib.parse import urlparse, parse_qs
 from lxml import html
 from tqdm import tqdm
 
- # https://www.themoviedb.org/list/10
- # https://trakt.tv/users/movistapp/lists/christmas-movies
- # https://mdblist.com/lists/linaspurinis/top-watched-movies-of-the-week
- # https://www.imdb.com/list/ls006405458
 try:
     import requests
     from pmmutils import logging, util
@@ -24,9 +20,11 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 11:
     sys.exit(0)
 
 options = [
-    {"arg": "pc", "key": "pmm-config",   "env": "PMM_CONFIG",   "type": "str",  "default": None,  "help": "PMM Config File"},
-    {"arg": "u",  "key": "url",          "env": "URL",          "type": "str",  "default": None,  "help": "Trakt, MDbList, IMDb, or TMDb List URL"},
+    {"arg": "pc", "key": "pmm-config",   "env": "PMM_CONFIG",   "type": "str",  "default": None,  "help": "Path to PMM Config with TMDb/Trakt configured."},
+    {"arg": "u",  "key": "url",          "env": "URL",          "type": "str",  "default": None,  "help": "TMDb List, TMDb Collection, IMDb List, Trakt List, or MDbList List URL."},
     {"arg": "ti", "key": "timeout",      "env": "TIMEOUT",      "type": "int",  "default": 600,   "help": "Timeout can be any number greater then 0. (Default: 600)"},
+    {"arg": "tp", "key": "tpdb",         "env": "TPDB",         "type": "bool", "default": False, "help": "Add TPDb placeholders over url placeholders."},
+    {"arg": "b",  "key": "background",   "env": "BACKGROUND",   "type": "bool", "default": False, "help": "Add Background placeholders."},
     {"arg": "s",  "key": "season",       "env": "SEASON",       "type": "bool", "default": False, "help": "Add Season posters placeholders."},
     {"arg": "e",  "key": "episode",      "env": "EPISODE",      "type": "bool", "default": False, "help": "Add Episode posters placeholders."},
     {"arg": "tr", "key": "trace",        "env": "TRACE",        "type": "bool", "default": False, "help": "Run with extra trace logs."},
@@ -39,7 +37,6 @@ config_dir = os.path.join(base_dir, "config")
 
 pmmargs = PMMArgs("meisnate12/Metadata-Set-Creator", base_dir, options, use_nightly=False)
 logger = logging.PMMLogger(script_name, "set_creator", os.path.join(config_dir, "logs"), is_trace=pmmargs["trace"], log_requests=pmmargs["log-requests"])
-#logger.secret([pmmargs["tmdbapi"]])
 requests.Session.send = util.update_send(requests.Session.send, pmmargs["timeout"])
 
 logger.header(pmmargs, sub=True)
@@ -61,6 +58,7 @@ elif not config["tmdb"]["apikey"]:
     raise Failed("apikey attribute blank")
 tmdbapi = None
 try:
+    logger.secret([config["tmdb"]["apikey"]])
     tmdbapi = TMDbAPIs(config["tmdb"]["apikey"])
     logger.info("TMDb Connection Successful")
 except TMDbException as e:
@@ -148,9 +146,9 @@ elif pmmargs["url"].startswith("https://mdblist.com/lists/"):
     parsed_url = urlparse(pmmargs["url"])
     query = parse_qs(parsed_url.query)
     if "sort" in query:
-        params["sort"] = query["sort"][0]
+        params["sort"] = query["sort"][0] # noqa
     if "sortorder" in query:
-        params["sortorder"] = query["sortorder"][0]
+        params["sortorder"] = query["sortorder"][0] # noqa
     url_base = str(parsed_url._replace(query=None).geturl())
     url_base = url_base if url_base.endswith("/") else f"{url_base}/"
     url_base = url_base if url_base.endswith("json/") else f"{url_base}json/"
@@ -265,17 +263,20 @@ elif pmmargs["url"].startswith("https://www.imdb.com/"):
                 logger.error(f"TMDb Error: No TMDb ID found for IMDb ID {imdb_id}")
         except TMDbException:
             logger.error(f"TMDb Error: No TMDb ID found for IMDb ID {imdb_id}")
-
 else:
     raise Failed(f"URL Invalid: {pmmargs['url']}")
 
+atr_type = "tpdb" if pmmargs["tpdb"] else "url"
 if movies:
     metadata = {}
     set_data = {}
     for k, v in movies.items():
-        title = f"{v['title']} ({v['year']})"
+        title = f"{v['title']} ({v['year']})" if v["year"] else v["title"]
         metadata[title] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
-        set_data[title] = YAML.inline({"poster_tpdb": None})
+        image_set = {f"{atr_type}_poster": None}
+        if pmmargs["background"]:
+            image_set[f"{atr_type}_background"] = None
+        set_data[title] = YAML.inline(image_set) if len(image_set) == 1 else image_set
 
     yaml_out = YAML(os.path.join(config_dir, "movie_list.yml"), start_empty=True)
     yaml_out["metadata"] = metadata
@@ -289,9 +290,11 @@ if shows:
     metadata = {}
     set_data = {}
     for k, v in shows.items():
-        title = f"{v['title']} ({v['year']})"
+        title = f"{v['title']} ({v['year']})" if v["year"] else v["title"]
         metadata[title] = {"template": YAML.inline({"name": "images", "id": k if isinstance(k, int) else "???"})}
-        show = {"poster_tpdb": None}
+        show = {f"{atr_type}_poster": None}
+        if pmmargs["background"]:
+            show[f"{atr_type}_background"] = None
         if isinstance(k, int) and (pmmargs["season"] or pmmargs["episode"]):
             try:
                 results = tmdbapi.find_by_id(tvdb_id=str(k))
@@ -301,12 +304,20 @@ if shows:
                 for season in tmdb_show.seasons:
                     if "seasons" not in show:
                         show["seasons"] = {}
+                    season_set = {}
+                    if pmmargs["season"]:
+                        season_set = {f"{atr_type}_poster": None}
+                        if pmmargs["background"]:
+                            season_set[f"{atr_type}_background"] = None
                     if pmmargs["episode"]:
-                        show["seasons"][season.season_number] = {"poster_tpdb": None, "episodes": {}} if pmmargs["season"] else {"episodes": {}}
                         for episode in season.episodes:
-                            show["seasons"][season.season_number]["episodes"][episode.episode_number] = YAML.inline({"poster_tpdb": None})
-                    else:
-                        show["seasons"][season.season_number] = YAML.inline({"poster_tpdb": None})
+                            if "episodes" not in season_set:
+                                season_set["episodes"] = {}
+                            episode_set = {f"{atr_type}_poster": None}
+                            if pmmargs["background"]:
+                                episode_set[f"{atr_type}_background"] = None
+                            season_set["episodes"][episode.episode_number] = YAML.inline(episode_set) if len(episode_set) == 1 else episode_set
+                    show["seasons"][season.season_number] = YAML.inline(season_set) if len(season_set) == 1 and "episodes" not in season_set else season_set
             except TMDbException as e:
                 logger.error(f"TMDb Error: {e}")
         set_data[title] = YAML.inline(show) if len(show) == 1 else show
